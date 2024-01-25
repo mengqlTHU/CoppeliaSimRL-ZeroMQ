@@ -1,20 +1,18 @@
 import numpy as np
-import gym
-from gym.utils import seeding
-from gym import spaces, logger
+import gymnasium as gym
+from gymnasium.utils import seeding
+from gymnasium import spaces, logger
 import time
 
 import sys
-sys.path.append('../VREP_RemoteAPIs')
-import sim as vrep_sim
-
+from coppeliasim_zmqremoteapi_client import RemoteAPIClient
 from CartPoleSimModel import CartPoleSimModel
 
 class CartPoleEnv(gym.Env):
     """Custom Environment that follows gym interface"""
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, action_type='descrete'):
+    def __init__(self, action_type='discrete'):
         super(CartPoleEnv, self).__init__()
         self.action_type = action_type
         self.push_force = 0
@@ -34,6 +32,10 @@ class CartPoleEnv(gym.Env):
             dtype=np.float32,
         )
 
+        client = RemoteAPIClient()
+        self.sim = client.require('sim')
+        self.sim.setStepping(True)
+
         if self.action_type == 'discrete':
             self.action_space = spaces.Discrete(3)
         elif self.action_type == 'continuous':
@@ -48,24 +50,10 @@ class CartPoleEnv(gym.Env):
         self.counts = 0
         self.steps_beyond_done = None
 
-        # Connect to VREP (CoppeliaSim)
-        vrep_sim.simxFinish(-1) # close all opened connections
-        while True:
-            client_ID = vrep_sim.simxStart('127.0.0.1', 19997, True, False, 5000, 5) # Connect to CoppeliaSim
-            if client_ID > -1: # connected
-                print('Connect to remote API server.')
-                break
-            else:
-                print('Failed connecting to remote API server! Try it again ...')
-
-        # Open synchronous mode
-        vrep_sim.simxSynchronous(client_ID, True) 
-        vrep_sim.simxStartSimulation(client_ID, vrep_sim.simx_opmode_oneshot)
-        vrep_sim.simxSynchronousTrigger(client_ID)
+        self.sim.startSimulation()
 
         self.cart_pole_sim_model = CartPoleSimModel()
-        self.cart_pole_sim_model.initializeSimModel(client_ID)
-        vrep_sim.simxSynchronousTrigger(client_ID)
+        self.cart_pole_sim_model.initializeSimModel(self.sim)
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -78,6 +66,10 @@ class CartPoleEnv(gym.Env):
         q = [0.0, 0.0]
         q[0] = self.cart_pole_sim_model.getJointPosition('prismatic_joint')
         q[1] = self.cart_pole_sim_model.getJointPosition('revolute_joint')
+
+        v = [0.0, 0.0]
+        v[0] = self.cart_pole_sim_model.getJointVelocity('prismatic_joint')
+        v[1] = self.cart_pole_sim_model.getJointVelocity('revolute_joint')
         self.q_last = self.q
         self.q = q
 
@@ -89,7 +81,7 @@ class CartPoleEnv(gym.Env):
             elif action == 2:
                 self.push_force = -1.0
         elif self.action_type == 'continuous':
-            self.push_force = action*2.0 # The action is in [-1.0, 1.0], therefore the force is in [-2.0, 2.0]
+            self.push_force = action[0]*2.0 # The action is in [-1.0, 1.0], therefore the force is in [-2.0, 2.0]
         else:
             assert 0, "The action type \'" + self.action_type + "\' can not be recognized"
 
@@ -117,38 +109,37 @@ class CartPoleEnv(gym.Env):
             reward = 0.0
 
         dt = 0.005
-        self.v = [(self.q[0] - self.q_last[0])/dt, (self.q[1] - self.q_last[1])/dt]
-        self.state = (self.q[0], self.q[1], self.v[0], self.v[1])
+
+        self.state = (self.q[0], self.q[1], v[0], v[1])
         self.counts += 1
 
-        vrep_sim.simxSynchronousTrigger(self.cart_pole_sim_model.client_ID)
-        vrep_sim.simxGetPingTime(self.cart_pole_sim_model.client_ID)
-
-        return np.array(self.state), reward, done, {}
+        self.sim.step()
+        return np.array(self.state, dtype=np.float32), reward, done, False, {}
     
-    def reset(self):
+    def reset(self, seed=None):
         # print('Reset the environment after {} counts'.format(self.counts))
         self.counts = 0
         self.push_force = 0
         self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(4,))
         self.steps_beyond_done = None
 
-        vrep_sim.simxStopSimulation(self.cart_pole_sim_model.client_ID, vrep_sim.simx_opmode_blocking) # stop the simulation
-        vrep_sim.simxGetPingTime(self.cart_pole_sim_model.client_ID)
-        time.sleep(0.01) # ensure the coppeliasim is stopped
-        vrep_sim.simxStartSimulation(self.cart_pole_sim_model.client_ID, vrep_sim.simx_opmode_oneshot)
-        self.cart_pole_sim_model.setJointTorque(0)
-        vrep_sim.simxSynchronousTrigger(self.cart_pole_sim_model.client_ID)
-        vrep_sim.simxGetPingTime(self.cart_pole_sim_model.client_ID)
+        self.sim.stopSimulation() # stop the simulation
+        time.sleep(0.1) # ensure the coppeliasim is stopped
+        self.sim.setStepping(True)
 
-        return np.array(self.state)
+        self.cart_pole_sim_model.setJointPosition('prismatic_joint', self.state[0])
+        self.cart_pole_sim_model.setJointPosition('revolute_joint', self.state[1])
+        self.sim.startSimulation()
+
+        self.cart_pole_sim_model.setJointTorque(0)
+
+        return np.array(self.state, dtype=np.float32), {}
     
     def render(self):
         return None
 
     def close(self):
-        vrep_sim.simxStopSimulation(self.cart_pole_sim_model.client_ID, vrep_sim.simx_opmode_blocking) # stop the simulation
-        vrep_sim.simxFinish(-1)  # Close the connection
+        self.sim.stopSimulation() # stop the simulation
         print('Close the environment')
         return None
 

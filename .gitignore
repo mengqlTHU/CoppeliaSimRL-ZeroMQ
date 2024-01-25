@@ -2,3 +2,4 @@
 *.pyc
 CartPoleRL/saved_models/tmp/*
 LIPM/saved_models/tmp/*
+.vscode

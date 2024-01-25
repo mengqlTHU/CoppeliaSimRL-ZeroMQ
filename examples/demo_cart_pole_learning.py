@@ -16,7 +16,7 @@ import os
 
 
 # ---------------- Create environment
-env = CartPoleEnv(action_type='discrete') # action_type can be set as discrete or continuous
+env = CartPoleEnv(action_type='continuous') # action_type can be set as discrete or continuous
 check_env(env)
 
 # ---------------- Callback functions
@@ -60,12 +60,13 @@ else:
 print('Prediction')
 
 for _ in range(10):
-    observation, done = env.reset(), False
+    observation, info = env.reset()
+    done = False
     episode_reward = 0.0
 
     while not done:
         action, _state = model.predict(observation, deterministic=True)
-        observation, reward, done, info = env.step(action)
+        observation, reward, done, terminated, info = env.step(action)
         episode_reward += reward
     
     print([episode_reward, env.counts])
