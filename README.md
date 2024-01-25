@@ -6,7 +6,7 @@ Some tutorials can be found at:
 - Zhihu: https://zhuanlan.zhihu.com/p/398874515
 - WeChat: https://mp.weixin.qq.com/s/id7fw0eGBtLqEqr-zaKKPQ
 
-All the demos have been tested on Ubuntu 20.04, with Anaconda python environment.
+I add gymnasium and ZeroMQ support compared with the original repository. All the demos have been tested on Windows 11, with python 3.10 environment.
 
 
 ---
@@ -15,7 +15,7 @@ All the demos have been tested on Ubuntu 20.04, with Anaconda python environment
 You have to install the following softwares and environments for this project, the recommend operating system is Ubuntu.
 - CoppeliaSim 4.2 (https://www.coppeliarobotics.com/)
 - Python 3.6+ (Anaconda is recommended)
-- Gym (https://github.com/openai/gym)
+- Gymnasium (https://github.com/Farama-Foundation/Gymnasium)
 - Stable-baselines3 (https://github.com/DLR-RM/stable-baselines3)
 - Pytorch (https://pytorch.org/)
 - Visdom (pip install visdom)
